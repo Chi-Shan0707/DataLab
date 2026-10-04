@@ -602,7 +602,7 @@ unsigned float_i2f(int x) {
   int exp = 30;
   while(!((x >> exp)&1))--exp;
 
-  // 不超过23位，精度没丢，直接左移对齐
+  // 不超过23位，精度仍在，，直接左移对齐
   if(exp <= 23) return sign|
                          ((exp + 127) << 23)|
                                             ((x <<(23-exp)) & 0x7fffff);
@@ -623,14 +623,14 @@ unsigned float_i2f(int x) {
 
 
   // 针对进位的特判！！舍入导致进位到 2^24，需要右移一位
-  if(x >> 24)
+  if(x>>24)
   {
     x=x>>1;
     exp=exp+1;
   }
   return sign|
               ((exp + 127) << 23)|
-                                            ((x <<(23-exp)) & 0x7fffff);
+                                   (x & 0x7fffff);
   
 }
 
