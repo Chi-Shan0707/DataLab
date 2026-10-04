@@ -139,29 +139,34 @@ NOTES:
 #include "bits.h"
 
 // P1
+// ac
 /* 
- * signMask - return a mask with only the most significant bit set (0x80000000)
+  * signMask - return a mask with only the most significant bit set (0x80000000)
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 2
  *   Rating: 1
  */
 int signMask(void) {
-  return 1;
+  return (~0)<<31;
 }
 
 // P2
+// ac
 /* 
- * bitXor - x^y using only ~ and & 
+  * bitXor - x^y using only ~ and &
  *   Example: bitXor(4, 5) = 1, bitXor(7, 7) = 0
  *   Legal ops: ~ &
  *   Max ops: 8
  *   Rating: 2
  */
 int bitXor(int x, int y) {
-	return 2;
+//	return (x&(!y))|((!x)&y);
+ // return (x&y) &((~x)&(~y));
+  return ~(~(x&(~y)) & ~(y&(~x)));
 }
 
 // P3
+// ac
 /*
  * negativePart - return -x if x < 0, otherwise return 0
  *   Examples: negativePart(-10) = 10, negativePart(5) = 0
@@ -170,11 +175,12 @@ int bitXor(int x, int y) {
  *   Rating: 3
  */
 int negativePart(int x){
-  return 3;
+  return  (~((x>>31)&x))+1;
 }
 
 
 // P4
+// ac
 /*
  * copyByteWithin - copy byte src of x to byte dst, leaving all other bytes unchanged
  *   Bytes are numbered from 0 (least significant) to 3 (most significant).
@@ -185,10 +191,16 @@ int negativePart(int x){
  *   Rating: 4
  */
 int copyByteWithin(int x, int src, int dst) {
-  return 4;
+// 首先注意这里是 要乘上8？
+
+// <<3 
+
+// 我希望能点对点地算增量？
+  return (((x>>(src<<3))&0xff)<<(dst<<3))|(x&(~(0xff<<(dst<<3))));
 }
 
 // P5
+// ac
 /* 
  * logicalShift - shift x to the right by n bits, using a logical shift
  *   Can assume that 0 <= n <= 31
@@ -198,7 +210,10 @@ int copyByteWithin(int x, int src, int dst) {
  *   Rating: 4
  */
 int logicalShift(int x, int n) {
-  return 5;
+  // 右移，高位1我要处理。
+  // 我只用确保前面的0都会被我消掉。所以只用 前面都1 后面都是0的一串掩码
+  //都取反？
+  return ((x>>n) ) & (~(((1<<n)+ (~1+1))<<(32+(~n+1))));
 }
 
 // P6
@@ -210,7 +225,17 @@ int logicalShift(int x, int n) {
  *   Rating: 4
  */
 int swapNibblePairs(int x) {
-  return 6;
+//  return ((x>>2)&(15+((15+((15+(15+((15+((15+(15<<4))<<4))<<4))<<4)<<4))<<4) ))^(x&((15+((15+((15+(15+((15+((15+(15<<4))<<4))<<4))<<4)<<4))<<4))<<2));
+//  用好的mask来获得4位 4位间隔的
+// mask = (0b11111111) ...
+
+// mask = 0xff+(0xff<<8)+(0xff<<16)+(0xff<<24)
+
+  //return ((255+(255<<8)+(255<<16)+(255<<24))&x)<<4 | ((255+(255<<8)+(255<<16)+(255<<24))&(x>>4));
+// 绷不住了， 竟然允许赋值，那还说啥了
+  int mask = 15+(15<<8)+(15<<16)+(15<<24);// 间隔掩码
+
+  return ((mask&x)<<4) | ((mask&(x>>4)));
 }
 
 // P7
@@ -223,7 +248,16 @@ int swapNibblePairs(int x) {
  *   Rating: 4
  */
 int secondLowestZeroBit(int x) {
-  return 7;
+
+// 取反就是
+// x & (-x) 最低的1位代表的值
+// 树状数组经典trick，lowbit
+// return (~x) & ( (~x)+1) ;
+// 上面求的是第1个0，题目要第2个0
+// 取反后变成找第2个1：先 x&(x-1) 抹掉最低的1，再 lowbit 一次
+  x=~x;
+  x=x&(x+(~0));
+  return x&(~x+1);
 }
 
 // P8
@@ -236,12 +270,20 @@ int secondLowestZeroBit(int x) {
  *   Rating: 5
  */
 int oddParity(int x) {
-  return 8;
-}
+  // 呃啊， 显然要折叠信息
+  ////x ^(x>>16), 虽然最高的16位我删不掉，但不重要，我的后16位已经折叠了，有足够的32位信息了
 
+  // 如果能赋值那还不好说？？？
+  x=x^(x>>16);
+  x=x^(x>> 8);
+  x=x^(x>> 4);
+  x=x^(x>> 2);
+  x=x^(x>> 1);
+  return !(x & 1);
+}
 // P9
 /* 
- * rotateRightBits - rotate x to right by n bits
+  * rotateRightBits - rotate x to right by n bits
  *   you can assume n >= 0
  *   Examples: rotateRightBits(0x12345678, 8) = 0x78123456
  *   Legal ops: ! ~ & ^ | + << >>
@@ -249,10 +291,24 @@ int oddParity(int x) {
  *   Rating: 5
  */
 int rotateRightBits(int x, int n) {
-  return 9;
+//  return ((x>>n) ) & (~(((1<<n)+ (~1+1))<<(32+(~n+1))));
+  // 总会溢出
+  // anyway
+  //  不管了
+
+//  n = n & 31;// 取余数
+
+// 上面只是逻辑右移，掉出去的低位没接回高位
+// 而且 n=0 时 32-n 会移32位，x86 上等于没移，炸了 -> 拆成先移 31-n 再移 1
+  int mask;
+  n=n &31;// 取余数
+  mask=~(((1<<31)>>n)<<1);// 高n位是0，其余是1，消掉算术右移补的1
+  return ((x>>n)&mask)  |((x<<(31+(~n+1)))<<1);
+  //防止算术右移高位的11111填补恶心到我们
 }
 
 // P10
+// ac
 /*
  * roundEvenPow2 - round nonnegative x to the nearest multiple of 2^n.
  *   If x is exactly halfway between two multiples, choose the multiple whose
@@ -264,7 +320,8 @@ int rotateRightBits(int x, int n) {
  *   Rating: 5
  */
 int roundEvenPow2(int x, int n) {
-  return 10;
+ // i MADE IT!!!! 
+  return ((x+ (1 <<(n+ (~1+1)))+ ((x&(1<<n))>>n)+(~1+1))>>n)<<n;
 }
 
 // P11
@@ -280,7 +337,17 @@ int roundEvenPow2(int x, int n) {
  *   Rating: 5
  */
 int midpointTowardFirst(int x, int y) {
-  return 11;
+//  return ((x>>1)+(y>>1)) + ((((x&1)^(y&1))) & ((y + ( ~x+1))>>31));
+
+//  return (x&y) + ((x^y)>>1) + (((x^y)&1)&((y+(~x+1))>>31));
+// 问题出在 y-x, 大正- 大负还会溢出mmd 会溢出（INT_MAX - INT_MIN）
+// 异号：x>y 当且仅当 y是负的，直接看y的符号
+// 同号：减法不会溢出，还是看 y-x 的符号
+  int difference_sign = (x^y)>>31;
+  //符号差异
+  int sub = (difference_sign&y)|(~difference_sign&(y+(~x+1)));
+  return (x&y) + ((x^y)>>1) + (((x^y)&1)&(sub>>31));
+// 
 }
 
 
@@ -294,7 +361,43 @@ int midpointTowardFirst(int x, int y) {
  *   Rating: 7
  */
 int isBetweenEitherOrder(int x, int a, int b) {
-  return 12;
+//  return (!(x^a)) | (!(x^b)) | ((~((x+(~a+1))>>31)+1) ^ (~((x+(~b+1)) >>31)+1));
+// ：x-a 会溢出
+// 在区间外 = 同时小于a,b 或者 同时大于a,b
+  
+
+//    int signa = (a>>31)&1;
+//    int signb = (b>>31)&1;
+// //负数为1，正数为0
+//   int signx=(x>>31)&1;
+
+//   int res_1 = (signa^signb) |  (!(signa^signx));
+//   // a,b同号，  并且 a，x异号，就一定是 0 | 0 =0 
+//   // res_1 只有等于0才有意义
+
+//回到最初的语句
+//return (!(x^a)) | (!(x^b)) | ((~((x+(~a+1))>>31)+1) ^ (~((x+(~b+1)) >>31)+1));
+//只要修正减法就是对的了！
+ 
+
+//int delta_a  = (x+(~a+1)
+
+  //int delta_a = (((x>>31)&1)^((a>>31)&1))  (~((x+(~a+1))>>31)+1);
+  //int delta_b = (((x>>31)&1)^((b>>31)&1))  (~((x+(~b+1))>>31)+1);
+  // 先把正-负或者负-正的情况给特判了
+
+  //剩下如出一辙
+
+  //return (!(x^a)) | (!(x^b)) | (delta_a ^ delta_b);
+   // diff_a: 异号为全1(-1)，同号为0
+   int diff_a = (x^a)>>31;    int diff_b = (x^b)>>31;
+  
+      // 异号直接取 x 的符号(若x负则全1)；同号时做减法不会溢出，取减法符号
+  int sign_a = ((diff_a&x) | (~diff_a&(x+(~a+1))))>>31;
+  int sign_b = ((diff_b&x) | (~diff_b&(x+(~b+1))))>>31;
+  
+  // 端点相等，或者两侧符号严格一正一负
+  return (!(x^a)) | (!(x^b)) | ((sign_a^sign_b)&1);
 }
 
 // P13
@@ -307,7 +410,26 @@ int isBetweenEitherOrder(int x, int a, int b) {
  *   Rating: 7
  */
 int mul5Sat(int x) {
-  return 13;
+//  return x+(x<<2);
+// x*5 = x+(x<<2)，两种溢出：
+// 1. 左移2位就溢出了：移回来和x不一样
+// 2. 相加溢出：结果和x符号不同
+// 溢出了就按x的符号选 INT_MAX / INT_MIN
+  int x4 = x<<2;
+
+
+
+// 第一次判*4溢出与否
+  int over = !!((x4>>2)^x);
+
+  int res= x4+x;
+
+  over = over |(((res^x)>>31)&1);
+  
+  int mask = ~over+1;// 溢出变全1，不溢出全0
+  int INF = (1<<31)^(~(x>>31));
+
+  return ((~mask)&res)|(mask&INF);//!!想了好久
 }
 
 // P14
@@ -320,7 +442,29 @@ int mul5Sat(int x) {
  *   Rating: 7
  */
 int classifyAdd3(int x, int y, int z) {
-  return 14;
+//  return 14;
+// 分两步加，每一步记一下溢出方向：正溢出 +1，负溢出 -1
+// 两步加起来 >0 就是大于INT_MAX，<0 就是小于INT_MIN，=0 说明没溢出或者正好抵消
+ int sum1 = x + y;     
+  int sum2 = sum1 + z;
+//最烦的是这个溢出
+    // 计算x+y的溢出
+
+    // 再计算 (x+y)和z求和的溢出
+      int c1 = 
+         ((((~x )& (~y) & sum1) >> 31) & 1) 
+      + ((x & y & (~sum1)) >> 31);
+
+    //对称的
+
+      int c2 = 
+      ((((~sum1) & (~z) & sum2) >> 31) & 1) + 
+           ((sum1 & z & (~sum2)) >> 31);
+  
+     int c = c1 + c2;
+  
+  return (c >> 31)| (!!c);
+
 }
 
 // P15
@@ -337,7 +481,8 @@ int classifyAdd3(int x, int y, int z) {
  *   Rating: 7
  */
 unsigned floatScaleThreeHalves(unsigned uf) {
-  return 15;
+//  return 15;
+;
 }
 
 // P16
@@ -353,7 +498,8 @@ unsigned floatScaleThreeHalves(unsigned uf) {
  *   Rating: 10
  */
 unsigned floatRoundEven(unsigned uf) {
-  return 16;
+//  return 16;
+  
 }
 
 // P17
@@ -367,7 +513,9 @@ unsigned floatRoundEven(unsigned uf) {
  *   Rating: 10
  */
 unsigned float_i2f(int x) {
-  return 17;
+//  return 17;
+ 
+  
 }
 
 
@@ -381,7 +529,24 @@ unsigned float_i2f(int x) {
  *   Rating: 10
  */
 int bitCount(int x) {
-  return 18;
+
+//  int res = 0;
+//  return 18;
+
+// 分治：相邻1位两两相加 -> 每2位存个数；再相邻2位相加 -> 每4位存个数 ……
+  int mask_1 = 85+(85<<8);// 0x5555
+  int mask_2 = 51+(51<<8);// 0x3333
+  int mask_4 = 15+(15<<8);// 0x0f0f
+  mask_1 = mask_1+(mask_1<<16);
+  mask_2 = mask_2+(mask_2<<16);
+  mask_4 = mask_4+(mask_4<<16);
+
+  x=(x&mask_1)+((x>>1)&mask_1);
+  x=(x&mask_2)+((x>>2)&mask_2);
+  x=(x+(x>>4))&mask_4;// 4位最多是8，加起来不会溢出到隔壁，可以先加再mask
+  x=x+(x>>8);
+  x=x+(x>>16);
+  return x&63;// 最多32个，低6位够了
 }
 
 // P19
@@ -395,5 +560,35 @@ int bitCount(int x) {
  */
 int bitReverse(int x)
 {
-  return 19;
+//归并排序？
+
+
+// 上下半区交换
+//  4444交换？
+
+//递归！
+
+ int mask_16 = (1<<16) + (~1+1);
+ x=(x>>16) &  mask_16|((x&mask_16)<< 16);
+
+ int mask_8 = 255+ (255<<16) ;
+
+ x = ( (x>>8) & mask_8 )| ((x&mask_8)<<8);
+ 
+ int mask_4 = 15 + (15<<8) + (15<<16) + (15<<24);
+ x = ((x>>4) & mask_4 )| ((x&mask_4)<<4);
+
+ int mask_2 = 3 + (3<<4) + (3<<8) + (3<<12) + (3<<16) + (3<<20) + (3<<24) + (3<<28);
+
+ x = ((x>>2) & mask_2 )| ((x&mask_2)<<2);
+
+ int mask_1 = 1 + (1<<2) + (1<<4) + (1<<6) + (1<<8) + (1<<10) + (1<<12) + (1<<14) + (1<<16) + (1<<18) + (1<<20) + (1<<22) + (1<<24) + (1<<26) + (1<<28) + (1<<30);
+
+ x = ((x>>1) & mask_1) | ((x&mask_1)<<1);
+
+ 
+
+
+
+  return x;
 }
