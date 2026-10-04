@@ -466,6 +466,7 @@ int classifyAdd3(int x, int y, int z) {
   return (c >> 31)| (!!c);
 
 }
+// sign  exp  frac
 
 // P15
 /*
@@ -482,7 +483,53 @@ int classifyAdd3(int x, int y, int z) {
  */
 unsigned floatScaleThreeHalves(unsigned uf) {
 //  return 15;
-;
+  unsigned sign = uf & 0x80000000;
+//1 000 0000 0000 0000 0000 0000 0000
+
+  unsigned exp = (uf >> 23) & 0xff;//eponet
+
+//0111 1111 1111 1111 1111 1111 1111
+  unsigned frac = uf & 0x7fffff;//fraction
+
+  //特判
+  if (exp == 0xff) return uf; // inf 和 nan 直接跑掉
+
+  // denormalized：没有隐藏的1，尾数直接 *3/2
+  if (exp == 0) {
+    //unsigned res = frac+ (frac<<1);
+//现在能乘法了，没必要
+      unsigned res = frac*3;
+    int round = ((res & 3) == 3);
+    // 3类型还是6类型
+
+
+    //round to even!!!
+    res = (res >> 1) + round;
+    
+    if (res >= 0x800000) return sign | (1 << 23) | (res & 0x7fffff);// 进位情况
+    return sign | res;
+  }
+
+  // normalized：补上那个隐藏的1，再 *3
+  unsigned res = (frac | 0x800000) * 3;
+  if (res >= 0x2000000)
+  {
+    exp = exp + 1;// 到2^25了，多右移一位，阶码+1
+    int round = ((res & 3) > 2) || (((res & 3) == 2) && ((res >> 2) & 1));
+    res = (res>>2)+round;
+  }
+  else
+  {
+    int round = ((res & 3)==3);
+    res = (res>>1)+round;
+  }
+  // 舍入之后又进位到 2^24
+  if (res >= 0x1000000) {
+    res = res>>1;
+    exp = exp+1;
+  }
+  if (exp >= 0xff) return sign | 0x7f800000;// 溢出变inf
+  return sign | (exp << 23) | (res & 0x7fffff);
 }
 
 // P16
@@ -499,9 +546,35 @@ unsigned floatScaleThreeHalves(unsigned uf) {
  */
 unsigned floatRoundEven(unsigned uf) {
 //  return 16;
-  
-}
+// 1000 0000 0000 0000 0000 0000 0000
+  unsigned sign = uf&0x80000000;
+  // 1111 1111
+  unsigned exp=(uf>>23)&0xff;//高位乱七八糟的不要
+  int e =exp-127;//真实的指数, in 十进制来看, it is a number
 
+  if(exp == 0xff)return uf;// inf 和 nan 原样返回
+  if (e<-1)return sign;// |f| < 0.5 舍入到0，保留符号位
+  if (e==-1) {
+    if (uf& 0x7fffff) return sign|0x3f800000;// 大于0.5进位到1.0
+    return sign;// 正好0.5向偶数舍入到0
+  }
+  if(e>=23)return uf;// 无论如何这个指数都能把他弄成一个integer，直接返回
+
+
+  // 和下面一题致
+  int shift = 23-e;
+  int mask = (1 << shift) - 1;
+  // 这里也直接处理了，到底需要不要进位到阶码
+     int half = 1 << (shift - 1);//用于判断四舍五入
+  int low = uf & mask;// 取出被舍弃的小数部分
+  int round = (low > half) || ((low == half) && ((uf >> shift) & 1));// 如出一辙
+  return (uf & ~mask) 
+             //尾部到底frac 后面大概率都是0000，就是mask都是处理掉
+
+            + (round << shift);
+            // 四舍五入在frac的中间部分补上
+            
+}
 // P17
 /*
  * float_i2f - Return bit-level equivalent of expression (float) x.
@@ -514,7 +587,50 @@ unsigned floatRoundEven(unsigned uf) {
  */
 unsigned float_i2f(int x) {
 //  return 17;
- 
+// 0100 0000
+  if (x == 0) return 0;
+  if (x == 0x80000000) return 0xcf000000;// INT_MIN 绝对值溢出，单独特判
+
+  unsigned sign = 0;
+  if (x < 0)
+  {
+    sign = 0x80000000;
+    x = -x;
+  }//统一处理正数
+
+  // 找最高的1
+  int exp = 30;
+  while(!((x >> exp)&1))--exp;
+
+  // 不超过23位，精度没丢，直接左移对齐
+  if(exp <= 23) return sign|
+                         ((exp + 127) << 23)|
+                                            ((x <<(23-exp)) & 0x7fffff);
+  
+
+  // 超过23位
+  int shift = exp - 23;
+  int mask = (1<<shift)-1;
+
+
+  int half = 1<<(shift-1);//for 四舍五入
+
+  int low = x & mask;
+
+
+                   int round = (low > half) || ((low == half) && ((x >> shift) & 1));//模拟四舍五入的两种情况
+  x = (x>>shift) +           round;
+
+
+  // 针对进位的特判！！舍入导致进位到 2^24，需要右移一位
+  if(x >> 24)
+  {
+    x=x>>1;
+    exp=exp+1;
+  }
+  return sign|
+              ((exp + 127) << 23)|
+                                            ((x <<(23-exp)) & 0x7fffff);
   
 }
 
